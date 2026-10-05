@@ -1,0 +1,999 @@
+-- Brick Breaker
+-- by Andrew Laiacano
+-- October 2026
+
+-- Information block for the plugin
+PluginInfo = {
+  Name = "Brick Breaker",
+  Version = "1.0.0",
+  BuildVersion = "1.0.0.4",
+  Id = "56ca5bd5-c116-4ea6-8e82-1f3a4a708e86",
+  Author = "Andrew Laiacano",
+  Description = "Brick Breaker drawn as an SVG touch panel main page, where the bricks are the panel's buttons and AV controls."
+}
+
+-- Define the color of the plugin object in the design
+function GetColor(props)
+  return { 102, 102, 102 }
+end
+
+-- The name that will initially display when dragged into a design
+function GetPrettyName(props)
+  return "Brick Breaker, version " .. PluginInfo.Version
+end
+
+-- Optional function used if plugin has multiple pages
+PageNames = { "Game" }  --List the pages within the plugin
+function GetPages(props)
+  local pages = {}
+  for ix,name in ipairs(PageNames) do
+    table.insert(pages, {name = PageNames[ix]})
+  end
+  return pages
+end
+
+-- Optional function to define model if plugin supports more than one model
+function GetModel(props)
+  local model = {}
+  if props.Model ~= nil and props.Model.Value ~= "" then
+    table.insert(model, { props.Model.Value } )
+  else
+    table.insert(model, { "Base Model" } )
+  end
+ return model
+end
+
+-- Define User configurable Properties of the plugin
+function GetProperties()
+  local props = {}
+  -- Frames drawn per second; the Core's control engine tops out at 30
+  table.insert(props, {
+    Name = "Frame Rate",
+    Type = "integer",
+    Min = 10,
+    Max = 30,
+    Value = 20
+  })
+
+  -- Balls per game
+  table.insert(props, {
+    Name = "Lives",
+    Type = "integer",
+    Min = 1,
+    Max = 9,
+    Value = 3
+  })
+  return props
+end
+
+-- Optional function to define pins on the plugin that are not connected to a Control
+function GetPins(props)
+  local pins = {}
+  -- No extra pins
+  return pins
+end
+
+-- Optional function to update available properties when properties are altered by the user
+function RectifyProperties(props)
+  -- No property rectification needed
+  return props
+end
+
+-- Optional function to define components used within the plugin
+function GetComponents(props)
+  local components = {}
+  -- No embedded components
+  return components
+end
+
+-- Optional function to define wiring of components used within the plugin
+function GetWiring(props)
+  local wiring = {}
+  -- No internal wiring
+  return wiring
+end
+
+-- Defines the Controls used within the plugin
+function GetControls(props)
+  local ctrls = {}
+  -- The playfield: each frame's SVG is drawn onto this button
+  table.insert(ctrls, {
+    Name = "Screen",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = false,
+    PinStyle = "None"
+  })
+
+  -- Paddle position, 0 (left wall) to 1 (right wall); laid out as a horizontal fader
+  table.insert(ctrls, {
+    Name = "Paddle",
+    ControlType = "Knob",
+    ControlUnit = "Float",
+    Min = 0,
+    Max = 1,
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+
+  -- Paddle moves while either button is held
+  table.insert(ctrls, {
+    Name = "Left",
+    ControlType = "Button",
+    ButtonType = "Momentary",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  table.insert(ctrls, {
+    Name = "Right",
+    ControlType = "Button",
+    ButtonType = "Momentary",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+
+  -- New game
+  table.insert(ctrls, {
+    Name = "Start",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  table.insert(ctrls, {
+    Name = "Pause",
+    ControlType = "Button",
+    ButtonType = "Toggle",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+
+  table.insert(ctrls, {
+    Name = "HighScore",
+    ControlType = "Indicator",
+    IndicatorType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Output"
+  })
+
+  -- Ready, Playing, Paused, You win or Game over
+  table.insert(ctrls, {
+    Name = "GameState",
+    ControlType = "Indicator",
+    IndicatorType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Output"
+  })
+
+  table.insert(ctrls, {
+    Name = "Score",
+    ControlType = "Indicator",
+    IndicatorType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Output"
+  })
+
+  table.insert(ctrls, {
+    Name = "Lives",
+    ControlType = "Indicator",
+    IndicatorType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Output"
+  })
+
+  -- Measured frame rate and frame size
+  table.insert(ctrls, {
+    Name = "Fps",
+    ControlType = "Indicator",
+    IndicatorType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Output"
+  })
+  return ctrls
+end
+
+--Layout of controls and graphics for the plugin UI to display
+function GetControlLayout(props)
+  local layout = {}
+  local graphics = {}
+  local CurrentPage = PageNames[props["page_index"].Value]
+
+  if CurrentPage == "Game" then
+    -- Plugin background
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Fill = { 35, 35, 35 },
+      StrokeColor = { 35, 35, 35 },
+      StrokeWidth = 0,
+      CornerRadius = 0,
+      Position = { 0, 0 },
+      Size = { 680, 685 },
+      ZOrder = -10
+    })
+
+    -- Playfield section
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Text = "Playfield (tap to launch, drag the strip to move the paddle)",
+      Fill = { 55, 55, 55 },
+      Color = { 221, 221, 221 },
+      StrokeColor = { 80, 80, 80 },
+      StrokeWidth = 1,
+      CornerRadius = 8,
+      Font = "Roboto",
+      FontSize = 11,
+      Position = { 10, 10 },
+      Size = { 660, 475 },
+      ZOrder = -5
+    })
+
+    -- Half-size view of the 1280x800 playfield; stretch it to full size on a UCI
+    layout["Screen"] = {
+      PrettyName = "Game~Screen",
+      Style = "Button",
+      ButtonStyle = "Trigger",
+      ButtonVisualStyle = "Flat",
+      Position = { 20, 35 },
+      Size = { 640, 400 },
+      Color = { 27, 31, 39 },
+      CornerRadius = 4
+    }
+
+    -- Same width as Screen so the fader thumb tracks the paddle
+    layout["Paddle"] = {
+      PrettyName = "Game~Paddle",
+      Style = "Fader",
+      Position = { 20, 440 },
+      Size = { 640, 36 },
+      Color = { 77, 163, 255 },
+      ShowTextbox = false
+    }
+
+    -- Controls section
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Text = "Controls",
+      Fill = { 55, 55, 55 },
+      Color = { 221, 221, 221 },
+      StrokeColor = { 80, 80, 80 },
+      StrokeWidth = 1,
+      CornerRadius = 8,
+      Font = "Roboto",
+      FontSize = 11,
+      Position = { 10, 495 },
+      Size = { 660, 90 },
+      ZOrder = -5
+    })
+
+    layout["Left"] = {
+      PrettyName = "Game~Paddle Left",
+      Style = "Button",
+      ButtonStyle = "Momentary",
+      ButtonVisualStyle = "Flat",
+      Position = { 20, 520 },
+      Size = { 80, 24 },
+      Color = { 0, 120, 215 },
+      OffColor = { 80, 80, 80 },
+      UnlinkOffColor = true,
+      Legend = "Left",
+      FontSize = 12,
+      CornerRadius = 4
+    }
+
+    layout["Right"] = {
+      PrettyName = "Game~Paddle Right",
+      Style = "Button",
+      ButtonStyle = "Momentary",
+      ButtonVisualStyle = "Flat",
+      Position = { 105, 520 },
+      Size = { 80, 24 },
+      Color = { 0, 120, 215 },
+      OffColor = { 80, 80, 80 },
+      UnlinkOffColor = true,
+      Legend = "Right",
+      FontSize = 12,
+      CornerRadius = 4
+    }
+
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "Score",
+      Color = { 200, 200, 200 },
+      Font = "Roboto",
+      FontSize = 11,
+      HTextAlign = "Right",
+      Position = { 195, 520 },
+      Size = { 50, 24 }
+    })
+
+    layout["Score"] = {
+      PrettyName = "Game~Score",
+      Style = "Text",
+      Position = { 250, 520 },
+      Size = { 150, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4,
+      IsReadOnly = true
+    }
+
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "Lives",
+      Color = { 200, 200, 200 },
+      Font = "Roboto",
+      FontSize = 11,
+      HTextAlign = "Right",
+      Position = { 450, 520 },
+      Size = { 50, 24 }
+    })
+
+    layout["Lives"] = {
+      PrettyName = "Game~Lives",
+      Style = "Text",
+      Position = { 505, 520 },
+      Size = { 150, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4,
+      IsReadOnly = true
+    }
+
+    layout["Start"] = {
+      PrettyName = "Game~Start",
+      Style = "Button",
+      ButtonStyle = "Trigger",
+      ButtonVisualStyle = "Flat",
+      Position = { 20, 550 },
+      Size = { 80, 24 },
+      Color = { 0, 180, 80 },
+      Legend = "New Game",
+      FontSize = 12,
+      CornerRadius = 4
+    }
+
+    layout["Pause"] = {
+      PrettyName = "Game~Pause",
+      Style = "Button",
+      ButtonStyle = "Toggle",
+      ButtonVisualStyle = "Flat",
+      Position = { 105, 550 },
+      Size = { 80, 24 },
+      Color = { 230, 160, 0 },
+      OffColor = { 80, 80, 80 },
+      UnlinkOffColor = true,
+      Legend = "Pause",
+      FontSize = 12,
+      CornerRadius = 4
+    }
+
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "Best",
+      Color = { 200, 200, 200 },
+      Font = "Roboto",
+      FontSize = 11,
+      HTextAlign = "Right",
+      Position = { 195, 550 },
+      Size = { 50, 24 }
+    })
+
+    layout["HighScore"] = {
+      PrettyName = "Game~High Score",
+      Style = "Text",
+      Position = { 250, 550 },
+      Size = { 150, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4,
+      IsReadOnly = true
+    }
+
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "State",
+      Color = { 200, 200, 200 },
+      Font = "Roboto",
+      FontSize = 11,
+      HTextAlign = "Right",
+      Position = { 450, 550 },
+      Size = { 50, 24 }
+    })
+
+    layout["GameState"] = {
+      PrettyName = "Game~State",
+      Style = "Text",
+      Position = { 505, 550 },
+      Size = { 150, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4,
+      IsReadOnly = true
+    }
+
+    -- Diagnostics section
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Text = "Diagnostics",
+      Fill = { 55, 55, 55 },
+      Color = { 221, 221, 221 },
+      StrokeColor = { 80, 80, 80 },
+      StrokeWidth = 1,
+      CornerRadius = 8,
+      Font = "Roboto",
+      FontSize = 11,
+      Position = { 10, 595 },
+      Size = { 660, 60 },
+      ZOrder = -5
+    })
+
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "Frame rate",
+      Color = { 200, 200, 200 },
+      Font = "Roboto",
+      FontSize = 11,
+      HTextAlign = "Right",
+      Position = { 20, 620 },
+      Size = { 80, 24 }
+    })
+
+    layout["Fps"] = {
+      PrettyName = "Diagnostics~Frame Rate",
+      Style = "Text",
+      Position = { 105, 620 },
+      Size = { 150, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4,
+      IsReadOnly = true
+    }
+
+    -- Build version
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "v" .. PluginInfo.BuildVersion,
+      Color = { 150, 150, 150 },
+      Font = "Roboto",
+      FontSize = 10,
+      HTextAlign = "Left",
+      Position = { 10, 660 },
+      Size = { 150, 20 }
+    })
+  end
+  return layout, graphics
+end
+
+--Start event based logic
+if Controls then
+  -- Brick Breaker
+  -- Plays Brick Breaker on an SVG that is redrawn onto the Screen button every frame.
+  -- Dependencies: none
+
+  --*** Constants ***
+  rapidjson = require("rapidjson")
+  FrameRate = Properties["Frame Rate"].Value
+  FrameTime = 1 / FrameRate
+  StartLives = Properties["Lives"].Value
+  ModeNames = {
+    ready = "Ready",
+    playing = "Playing",
+    paused = "Paused",
+    won = "You win",
+    lost = "Game over"
+  }
+
+  -- Playfield size and brick table (the touch panel main page elements).
+  -- Pure Lua: no Q-SYS APIs, so it loads in the test runner.
+  Level = {
+    W = 1280,
+    H = 800,
+    Bricks = {}
+  }
+
+  function AddBrick(x, y, w, h, label, kind, color)
+    table.insert(Level.Bricks, { x = x, y = y, w = w, h = h, label = label, kind = kind, color = color })
+  end
+
+  -- Header row: room name, clock, setup
+  AddBrick(20, 20, 600, 60, "Conference Room", "header", "#2a3140")
+  AddBrick(1000, 20, 160, 60, "10:42 AM", "header", "#2a3140")
+  AddBrick(1180, 20, 80, 60, "Setup", "header", "#4a4f5c")
+
+  -- Source row and room row: six 190 px buttons each, 20 px apart
+  SourceLabels = { "Laptop", "HDMI", "Wireless", "PC", "Camera", "Blu-ray" }
+  RoomLabels = { "Display On", "Display Off", "Screen Up", "Screen Down", "Lights", "Shades" }
+  for i = 1, 6 do
+    AddBrick(20 + 210 * (i - 1), 110, 190, 90, SourceLabels[i], "source", "#2d5d8c")
+    AddBrick(20 + 210 * (i - 1), 220, 190, 90, RoomLabels[i], "room", "#3d4a63")
+  end
+
+  -- Volume strip: down, ten level segments (green, amber, red like a meter), up, mute
+  AddBrick(20, 340, 100, 60, "Vol -", "volume", "#4a4f5c")
+  for i = 1, 10 do
+    local color = (i == 10) and "#c0392b" or (i >= 8) and "#d4a017" or "#3fae5a"
+    AddBrick(135 + 65 * (i - 1), 340, 55, 60, "", "segment", color)
+  end
+  AddBrick(790, 340, 100, 60, "Vol +", "volume", "#4a4f5c")
+  AddBrick(910, 340, 100, 60, "Mute", "mute", "#b0443c")
+
+  -- Power: wide enough for its label
+  AddBrick(1030, 340, 230, 60, "System Off", "power", "#c0392b")
+  -- Game logic: ball, paddle and brick physics and the game state machine.
+  -- Pure Lua: no Q-SYS APIs, so it loads in the test runner.
+  Game = {}
+
+  BallRadius = 12
+  LaunchVx = 300
+  LaunchVy = -380
+  PaddleSpeed = 900                 -- px per second while Left or Right is held
+  MaxBounceAngle = math.rad(60)     -- from vertical, for a hit at the paddle's edge
+  BrickPoints = 10
+  BaseSpeed = math.sqrt(LaunchVx ^ 2 + LaunchVy ^ 2)   -- px per second with every brick standing
+  MaxSpeedUp = 0.5                  -- extra speed, as a fraction, once the last brick is gone
+
+  function Clamp(value, low, high)
+    return math.max(low, math.min(high, value))
+  end
+
+  -- Sits the ball on top of the paddle, at rest
+  function ParkBall(state)
+    local ball = state.ball
+    ball.x = state.paddle.x
+    ball.y = state.paddle.y - ball.r
+    ball.vx = 0
+    ball.vy = 0
+  end
+
+  --[[ Summary:
+      Creates a new game state in "ready" mode with the ball parked
+      on the paddle. paddle.x is the paddle's centre and paddle.y its
+      top edge.
+      Params:  level (table) - Level table with W, H and Bricks
+               opts (table)  - optional settings: lives, highScore (number)
+      Returns: state (table)
+  ]]
+  function Game.New(level, opts)
+    opts = opts or {}
+    local state = {
+      w = level.W,
+      h = level.H,
+      ball = { x = 0, y = 0, vx = 0, vy = 0, r = BallRadius },
+      paddle = { x = level.W / 2, y = level.H - 60, w = 180, h = 20 },
+      bricks = {},
+      bricksLeft = #level.Bricks,
+      brickBottom = 0,              -- lowest brick edge; below it there is nothing to hit
+      score = 0,
+      highScore = opts.highScore or 0,
+      lives = opts.lives or 3,
+      startLives = opts.lives or 3,
+      mode = "ready",
+      resumeMode = "ready",         -- mode to return to when a pause ends
+      bricksVersion = 0
+    }
+    for i, brick in ipairs(level.Bricks) do
+      state.bricks[i] = {
+        x = brick.x, y = brick.y, w = brick.w, h = brick.h,
+        label = brick.label, kind = brick.kind, color = brick.color,
+        alive = true
+      }
+      state.brickBottom = math.max(state.brickBottom, brick.y + brick.h)
+    end
+    ParkBall(state)
+    return state
+  end
+
+  --[[ Summary:
+      The speed the ball should travel at right now. It rises in a
+      straight line from BaseSpeed on a full panel to BaseSpeed *
+      (1 + MaxSpeedUp) when the last brick breaks.
+      Params:  state (table) - game state
+      Returns: speed (number) - px per second
+  ]]
+  function Game.BallSpeed(state)
+    local broken = #state.bricks - state.bricksLeft
+    local progress = (#state.bricks > 0) and (broken / #state.bricks) or 0
+    return BaseSpeed * (1 + MaxSpeedUp * progress)
+  end
+
+  -- Rescales the ball's velocity to the current target speed, keeping its direction
+  function ApplyBallSpeed(state)
+    local ball = state.ball
+    local speed = math.sqrt(ball.vx ^ 2 + ball.vy ^ 2)
+    if speed == 0 then return end
+    local scale = Game.BallSpeed(state) / speed
+    ball.vx = ball.vx * scale
+    ball.vy = ball.vy * scale
+  end
+
+  function Game.Launch(state)
+    if state.mode ~= "ready" then return end
+    state.ball.vx = LaunchVx
+    state.ball.vy = LaunchVy
+    ApplyBallSpeed(state)
+    state.mode = "playing"
+  end
+
+  -- Starts a new game: all bricks back, score cleared, lives refilled. The high score stays.
+  function Game.Reset(state)
+    for _, brick in ipairs(state.bricks) do
+      brick.alive = true
+    end
+    state.bricksLeft = #state.bricks
+    state.bricksVersion = state.bricksVersion + 1
+    state.score = 0
+    state.lives = state.startLives
+    state.mode = "ready"
+    ParkBall(state)
+  end
+
+  -- Pauses a game in progress, or resumes it; ignored once the game is won or lost
+  function Game.SetPaused(state, paused)
+    if paused and (state.mode == "ready" or state.mode == "playing") then
+      state.resumeMode = state.mode
+      state.mode = "paused"
+    elseif not paused and state.mode == "paused" then
+      state.mode = state.resumeMode
+    end
+  end
+
+  -- A tap on the playfield: launches the ball, or starts a new game once this one is over
+  function Game.Tap(state)
+    if state.mode == "ready" then
+      Game.Launch(state)
+    elseif state.mode == "won" or state.mode == "lost" then
+      Game.Reset(state)
+    end
+  end
+
+  -- Paddle position as a 0..1 fader position (the inverse of input.paddlePos)
+  function Game.PaddlePos(state)
+    local paddle = state.paddle
+    return (paddle.x - paddle.w / 2) / (state.w - paddle.w)
+  end
+
+  -- Applies fader and button input to the paddle, keeping it inside the walls
+  function MovePaddle(state, dt, input)
+    local paddle = state.paddle
+    local half = paddle.w / 2
+    if input.paddlePos then
+      paddle.x = half + Clamp(input.paddlePos, 0, 1) * (state.w - paddle.w)
+    end
+    if input.left then paddle.x = paddle.x - PaddleSpeed * dt end
+    if input.right then paddle.x = paddle.x + PaddleSpeed * dt end
+    paddle.x = Clamp(paddle.x, half, state.w - half)
+  end
+
+  -- Reflects the ball off the left, right and top walls; the bottom is open
+  function BounceOffWalls(state)
+    local ball = state.ball
+    if ball.x < ball.r then
+      ball.x = ball.r
+      ball.vx = math.abs(ball.vx)
+    elseif ball.x > state.w - ball.r then
+      ball.x = state.w - ball.r
+      ball.vx = -math.abs(ball.vx)
+    end
+    if ball.y < ball.r then
+      ball.y = ball.r
+      ball.vy = math.abs(ball.vy)
+    end
+  end
+
+  --[[ Summary:
+      Bounces a falling ball off the paddle. The outgoing angle depends
+      on where the ball lands: straight up from the centre, up to
+      MaxBounceAngle from vertical at either edge. Speed is unchanged.
+      Params:  state (table) - game state
+      Returns: nil
+  ]]
+  function BounceOffPaddle(state)
+    local ball, paddle = state.ball, state.paddle
+    local half = paddle.w / 2
+    if ball.vy <= 0 then return end
+    if ball.y + ball.r < paddle.y or ball.y > paddle.y + paddle.h then return end
+    if math.abs(ball.x - paddle.x) > half + ball.r then return end
+    local offset = Clamp((ball.x - paddle.x) / half, -1, 1)
+    local speed = math.sqrt(ball.vx ^ 2 + ball.vy ^ 2)
+    ball.vx = speed * math.sin(offset * MaxBounceAngle)
+    ball.vy = -speed * math.cos(offset * MaxBounceAngle)
+    ball.y = paddle.y - ball.r
+  end
+
+  --[[ Summary:
+      Breaks the first live brick the ball overlaps and bounces the
+      ball off it. The face that was hit is the axis with the smaller
+      overlap: a side hit reverses vx, a top or bottom hit reverses vy.
+      At most one brick breaks per call, and the ball speeds up a
+      little each time.
+      Params:  state (table) - game state
+      Returns: broke (boolean) - true if a brick was broken
+  ]]
+  function BounceOffBricks(state)
+    local ball = state.ball
+    local r = ball.r
+    if ball.y - r > state.brickBottom then return end
+    for _, brick in ipairs(state.bricks) do
+      if brick.alive then
+        local dx = ball.x - Clamp(ball.x, brick.x, brick.x + brick.w)
+        local dy = ball.y - Clamp(ball.y, brick.y, brick.y + brick.h)
+        if dx * dx + dy * dy < r * r then
+          local centreX = brick.x + brick.w / 2
+          local centreY = brick.y + brick.h / 2
+          local overlapX = brick.w / 2 + r - math.abs(ball.x - centreX)
+          local overlapY = brick.h / 2 + r - math.abs(ball.y - centreY)
+          if overlapX < overlapY then
+            local side = (ball.x < centreX) and -1 or 1
+            ball.vx = side * math.abs(ball.vx)
+            ball.x = ball.x + side * overlapX
+          else
+            local side = (ball.y < centreY) and -1 or 1
+            ball.vy = side * math.abs(ball.vy)
+            ball.y = ball.y + side * overlapY
+          end
+          brick.alive = false
+          state.bricksLeft = state.bricksLeft - 1
+          state.score = state.score + BrickPoints
+          state.highScore = math.max(state.highScore, state.score)
+          state.bricksVersion = state.bricksVersion + 1
+          ApplyBallSpeed(state)
+          return true
+        end
+      end
+    end
+    return false
+  end
+
+  function LoseLife(state)
+    state.lives = state.lives - 1
+    ParkBall(state)
+    state.mode = (state.lives > 0) and "ready" or "lost"
+  end
+
+  --[[ Summary:
+      Advances the game by dt seconds. The ball's move is split into
+      sub-steps no longer than its radius so a fast ball cannot skip
+      past whatever it should hit.
+      Params:  state (table) - game state from Game.New
+               dt (number)   - seconds since the last step
+               input (table) - paddlePos (0..1 or nil), left, right (boolean)
+      Returns: nil
+  ]]
+  function Game.Step(state, dt, input)
+    if state.mode ~= "ready" and state.mode ~= "playing" then return end
+    MovePaddle(state, dt, input)
+    if state.mode == "ready" then
+      ParkBall(state)
+      return
+    end
+    local ball = state.ball
+    local distance = math.max(math.abs(ball.vx), math.abs(ball.vy)) * dt
+    local steps = math.max(1, math.ceil(distance / ball.r))
+    local stepDt = dt / steps
+    for _ = 1, steps do
+      ball.x = ball.x + ball.vx * stepDt
+      ball.y = ball.y + ball.vy * stepDt
+      BounceOffWalls(state)
+      if BounceOffBricks(state) and state.bricksLeft == 0 then
+        state.mode = "won"
+        return
+      end
+      BounceOffPaddle(state)
+      if ball.y - ball.r > state.h then
+        LoseLife(state)
+        return
+      end
+    end
+  end
+  -- Renderer: turns a game state into an SVG document string.
+  -- Pure Lua: no Q-SYS APIs, so it loads in the test runner.
+  Render = {}
+
+  SvgOpen = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800">'
+    .. '<rect width="1280" height="800" fill="#1b1f27"/>'
+  SvgClose = '</svg>'
+
+  BrickCache = { state = nil, version = nil, svg = "" }
+
+  --[[ Summary:
+      Builds the brick layer: a rounded rect and a centred label for
+      every live brick. The result is cached and only rebuilt when a
+      brick breaks (state.bricksVersion changes) or the state changes.
+      Params:  state (table) - game state
+      Returns: layer (string) - SVG fragment
+  ]]
+  function Render.Bricks(state)
+    if BrickCache.state == state and BrickCache.version == state.bricksVersion then
+      return BrickCache.svg
+    end
+    local parts = { '<g font-family="sans-serif" font-size="24" fill="#ffffff" text-anchor="middle">' }
+    for _, brick in ipairs(state.bricks) do
+      if brick.alive then
+        parts[#parts + 1] = string.format('<rect x="%d" y="%d" width="%d" height="%d" rx="8" fill="%s"/>',
+          brick.x, brick.y, brick.w, brick.h, brick.color)
+        if brick.label ~= "" then
+          parts[#parts + 1] = string.format('<text x="%d" y="%d">%s</text>',
+            math.floor(brick.x + brick.w / 2), math.floor(brick.y + brick.h / 2 + 8), brick.label)
+        end
+      end
+    end
+    parts[#parts + 1] = '</g>'
+    BrickCache.state = state
+    BrickCache.version = state.bricksVersion
+    BrickCache.svg = table.concat(parts)
+    return BrickCache.svg
+  end
+
+  -- Score, high score and lives along the bottom edge, under the paddle
+  function Render.Hud(state)
+    return string.format('<g font-family="sans-serif" font-size="22" fill="#9aa4b5">'
+      .. '<text x="20" y="790">Score %d</text>'
+      .. '<text x="640" y="790" text-anchor="middle">Best %d</text>'
+      .. '<text x="1260" y="790" text-anchor="end">Lives %d</text></g>',
+      math.floor(state.score), math.floor(state.highScore), math.floor(state.lives))
+  end
+
+  OverlayText = {
+    paused = { "PAUSED", "Press Pause to carry on" },
+    won = { "YOU WIN", "Tap to play again" },
+    lost = { "GAME OVER", "Tap to play again" }
+  }
+
+  --[[ Summary:
+      Builds the text drawn over the playfield: a launch hint while the
+      ball waits on the paddle, or a dimmed screen with a title when the
+      game is paused, won or lost. Empty while playing.
+      Params:  state (table) - game state
+      Returns: overlay (string) - SVG fragment
+  ]]
+  function Render.Overlay(state)
+    if state.mode == "ready" then
+      return '<text x="640" y="600" font-family="sans-serif" font-size="32" fill="#9aa4b5"'
+        .. ' text-anchor="middle">Tap to launch</text>'
+    end
+    local text = OverlayText[state.mode]
+    if not text then return "" end
+    return '<rect width="1280" height="800" fill="#000000" fill-opacity="0.6"/>'
+      .. '<g font-family="sans-serif" fill="#ffffff" text-anchor="middle">'
+      .. '<text x="640" y="400" font-size="110">' .. text[1] .. '</text>'
+      .. '<text x="640" y="470" font-size="36">' .. text[2] .. '</text></g>'
+  end
+
+  function Render.Frame(state)
+    local ball, paddle = state.ball, state.paddle
+    return table.concat({
+      SvgOpen,
+      Render.Bricks(state),
+      Render.Hud(state),
+      string.format('<rect x="%.1f" y="%d" width="%d" height="%d" rx="6" fill="#4da3ff"/>',
+        paddle.x - paddle.w / 2, paddle.y, paddle.w, paddle.h),
+      string.format('<circle cx="%.1f" cy="%.1f" r="%d" fill="#ffffff"/>', ball.x, ball.y, ball.r),
+      Render.Overlay(state),
+      SvgClose
+    })
+  end
+
+  --*** Globals ***
+  -- The high score is picked up from its indicator in case the Core kept it from the last run
+  State = Game.New(Level, {
+    lives = StartLives,
+    highScore = tonumber(Controls["HighScore"].String) or 0
+  })
+  FrameTimer = Timer.New()
+  FpsTimer = Timer.New()
+  FrameCount = 0
+  FrameBytes = 0
+  PaddleSeen = nil     -- fader position at the last frame, to detect a drag
+  Shown = {}           -- last text written to each indicator, by control name
+  Armed = false        -- ignores the handler calls Q-SYS makes while the script loads
+
+  --*** Helper Functions ***
+  -- Renders the current state and pushes it to the Screen button as a base64 SVG
+  function DrawFrame()
+    local svg = Render.Frame(State)
+    FrameBytes = #svg
+    Controls["Screen"].Legend = rapidjson.encode({
+      DrawChrome = false,
+      IconData = Crypto.Base64Encode(svg)
+    })
+  end
+
+  --[[ Summary:
+      Collects this frame's paddle input. The fader is polled rather
+      than handled by event so that it only counts as input when its
+      position actually changed since the last frame.
+      Returns: input (table) - paddlePos (0..1 or nil), left, right
+  ]]
+  function ReadInput()
+    local input = {
+      left = Controls["Left"].Boolean,
+      right = Controls["Right"].Boolean
+    }
+    local position = Controls["Paddle"].Position
+    if position ~= PaddleSeen then
+      PaddleSeen = position
+      input.paddlePos = position
+    end
+    return input
+  end
+
+  -- Moves the fader thumb to match the paddle after the buttons moved it
+  function SyncPaddleFader()
+    Controls["Paddle"].Position = Game.PaddlePos(State)
+    PaddleSeen = Controls["Paddle"].Position
+  end
+
+  -- Makes the Pause button show whether the game is actually paused
+  function SyncPauseButton()
+    Controls["Pause"].Boolean = (State.mode == "paused")
+  end
+
+  -- Writes an indicator only when its text changed
+  function ShowText(name, text)
+    if Shown[name] ~= text then
+      Shown[name] = text
+      Controls[name].String = text
+    end
+  end
+
+  function UpdateIndicators()
+    ShowText("Lives", tostring(math.floor(State.lives)))
+    ShowText("Score", tostring(math.floor(State.score)))
+    ShowText("HighScore", tostring(math.floor(State.highScore)))
+    ShowText("GameState", ModeNames[State.mode])
+  end
+
+  --*** Event Handlers ***
+  FrameTimer.EventHandler = function()
+    local input = ReadInput()
+    Game.Step(State, FrameTime, input)
+    if input.left or input.right then SyncPaddleFader() end
+    UpdateIndicators()
+    DrawFrame()
+    FrameCount = FrameCount + 1
+  end
+
+  -- Once a second, report how many frames the Core actually drew
+  FpsTimer.EventHandler = function()
+    Controls["Fps"].String = string.format("%d fps, %.1f KB", FrameCount, FrameBytes / 1024)
+    FrameCount = 0
+  end
+
+  -- Launches the ball, or starts a new game once this one is won or lost
+  Controls["Screen"].EventHandler = function()
+    if not Armed then return end
+    Game.Tap(State)
+    SyncPauseButton()
+  end
+
+  Controls["Start"].EventHandler = function()
+    if not Armed then return end
+    Game.Reset(State)
+    SyncPauseButton()
+  end
+
+  Controls["Pause"].EventHandler = function(ctl)
+    Game.SetPaused(State, ctl.Boolean)
+    SyncPauseButton()
+  end
+
+  --*** Initialization ***
+  SyncPaddleFader()
+  SyncPauseButton()
+  UpdateIndicators()
+  DrawFrame()
+  FrameTimer:Start(FrameTime)
+  FpsTimer:Start(1)
+  Timer.CallAfter(function() Armed = true end, 0.5)
+end
